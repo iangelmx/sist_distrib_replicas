@@ -9,6 +9,9 @@ __pycache__/
 #Ignore settings of application
 settings.json
 
+#Ignore Visual Studio code folder
+.vscode
+
 # Distribution / packaging
 .Python
 build/
