@@ -9,7 +9,7 @@ import ssl
 from werkzeug.utils import secure_filename
 from flask_jwt_extended import (
 	JWTManager, jwt_required, create_access_token,
-	get_jwt_identity, create_refresh_token,jwt_refresh_token_required
+	get_jwt_identity, create_refresh_token,jwt_refresh_token_required, get_jwt_claims
 )
 from flask import Flask, jsonify, send_file, request, render_template
 from flask import render_template_string, make_response, send_from_directory, redirect
@@ -82,22 +82,26 @@ def login_with_tokens():
 
 	username = json_req.get('username_inno_tok', None)
 	password = json_req.get('password_inno_tok', None)
+	platform = json_req.get('platform_inno_tok', None)
+	
 	if not username:
 		return jsonify({"ok":False,"msg": "Missing or bad username parameter"}), 400
 	if not password:
 		return jsonify({"ok":False,"msg": "Missing or bad password parameter"}), 400
+	if not platform:
+		return jsonify({"ok":False,"msg": "Missing or platform parameter"}), 400
 
-	result = valida_credenciales_token(username, password)
-
-	if result != True:
-		return jsonify({"ok":False,"msg": "Bad username or password"}), 401
+	result = valida_credenciales_token(username, password, platform)
+	result['ok'] = True
+	if result['ok'] != True:
+		return jsonify({"ok":False,"msg": "Bad credentials (username or password)"}), 401
 
 	# Identity can be any data that is json serializable
 	# Use create_access_token() and create_refresh_token() to create our
 	# access and refresh tokens
 	ret = {
 		'ok': True,
-		'access_token': create_access_token(identity=username),
+		'access_token': create_access_token(identity=username, user_claims={'rol':result['claim']}),
 		'refresh_token': create_refresh_token(identity=username)
 	}
 	return jsonify(ret), 200
@@ -123,6 +127,8 @@ def refresh():
 def protected():
 	# Access the identity of the current user with get_jwt_identity
 	current_user = get_jwt_identity()
+	claims = get_jwt_claims()
+	print(claims)
 	return jsonify(logged_in_as=current_user), 200
 
 
