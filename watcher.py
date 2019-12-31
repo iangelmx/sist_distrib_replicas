@@ -17,7 +17,7 @@ password_watcher = settings['password_api_token']
 access_token = ""
 refresh_token = ""
 
-ADMIN_REPLICAS = DESTINATION_HOST+'/'+PREFIX_API_PATH
+ADMIN_REPLICAS = DESTINATION_HOST+PREFIX_API_PATH
 
 def get_access_token():
 	global access_token, refresh_token
@@ -37,6 +37,7 @@ def get_access_token():
 		# response['ok'] Si no existe o no se puede obtener, será None.
 		if response.get('ok', None) == True: 
 			token = response['access_token']
+			access_token = token
 			refresh_token = response['refresh_token']
 		
 	return ( access_token, refresh_token )
