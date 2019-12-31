@@ -27,7 +27,7 @@ context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 
 #Donde se guardarán de forma predeterminada los archivos
 #Debe ser en rutas donde www-data tenga acceso
-UPLOAD_FOLDER = settings['default_upload_folder']
+UPLOAD_FOLDER = settings['destination']['folder']
 SECRET_KEY = settings['secret_key']
 PREFIX_API_PATH = settings['prefix_api_path']
 
@@ -194,4 +194,4 @@ def receive_files():
 
 
 if __name__ == '__main__':
-	app.run(debug=True, use_reloader=False, ssl_context=context)
+	app.run(debug=True, use_reloader=False, port=90)

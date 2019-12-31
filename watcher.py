@@ -9,12 +9,15 @@ import json
 settings = json.loads( open("./settings.json", "r").read() )
 
 PREFIX_API_PATH = settings['prefix_api_path']
+DESTINATION_HOST = settings['destination']['host']
+FOLDER_TO_WATCH = settings['watch_folder']
+
 username_watcher = settings['username_api_token']
 password_watcher = settings['password_api_token']
 access_token = ""
 refresh_token = ""
 
-ADMIN_REPLICAS = '10.129.10.32/'+PREFIX_API_PATH
+ADMIN_REPLICAS = DESTINATION_HOST+'/'+PREFIX_API_PATH
 
 def get_access_token():
 	global access_token, refresh_token
@@ -139,7 +142,7 @@ class Observador(FileSystemEventHandler):
 
 event_handler = Observador()
 observer = Observer()
-observer.schedule(event_handler, path='.', recursive=False)
+observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=False)
 observer.start()
 
 try:
