@@ -18,6 +18,7 @@ ADMIN_REPLICAS = '10.129.10.32/'+PREFIX_API_PATH
 
 def get_access_token():
 	global access_token, refresh_token
+	print("Se obtendrá un nuevo token")
 	data = {
 		'username_inno_tok':username_watcher,
 		'password_inno_tok':password_watcher
@@ -39,7 +40,7 @@ def get_access_token():
 
 def refresh_access_token():
 	global access_token, refresh_token
-
+	print("Se hará un refresh token")
 	headersRefresh = {
 		'Authorization':'Bearer '+refresh_token
 	}
@@ -60,6 +61,36 @@ def envia_archivo(event):
 	global access_token, refresh_token
 
 	access_token, refresh_token = get_access_token()
+
+	headers = {
+		'Authorization':'Bearer '+access_token
+	}
+
+	filename, ext = os.path.splitext(event.src_path)
+	filename = f"{filename}{ext}"
+
+	#Abre y prepara el archivo para enviarlo
+	archivo_a_enviar = {'nuevo_archivo': open('./'+filename, 'rb')}
+
+	#Intenta enviar el archivo con el token que se tiene actualmente.
+	sent = requests.post(ADMIN_REPLICAS+"receive-files", files=archivo_a_enviar, headers=headers)
+	response = json.loads(sent.text)
+	while sent is None or sent.status_code == 422 or response.get('msg', None) == "Token has expired":
+		access_token, refresh_token = refresh_access_token()
+		headers = {
+			'Authorization':'Bearer '+access_token
+		}
+		
+		sent = requests.post(ADMIN_REPLICAS+"receive-files", files=archivo_a_enviar, headers=headers)
+		time.sleep(1)
+	
+	response_sent = json.loads(sent.text)
+	return response_sent['ok']
+
+def elimina_archivo(event):
+	global access_token, refresh_token
+
+	access_token, refresh_token = get_access_token()
 	token = access_token
 
 	headers = {
@@ -69,9 +100,13 @@ def envia_archivo(event):
 	filename, ext = os.path.splitext(event.src_path)
 	filename = f"{filename}{ext}"
 
-	archivo_a_enviar = {'nuevo_archivo': open('./static/uploads/jugadores/'+filename, 'rb')}
+	archivo_a_eliminar = filename
+	
+	payload = {
+		'archivo':archivo_a_eliminar
+	}
 
-	sent = requests.post(ADMIN_REPLICAS+"receive-files", files=archivo_a_enviar, headers=headers)
+	sent = requests.delete(ADMIN_REPLICAS+"receive-files", data=payload, headers=headers)
 	response = json.loads(sent.text)
 	while sent is None or sent.status_code == 422 or response.get('msg', None) == "Token has expired":
 		access_token, refresh_token = refresh_access_token()
@@ -81,16 +116,13 @@ def envia_archivo(event):
 			'Authorization':'Bearer '+token
 		}
 		
-		sent = requests.post(ADMIN_REPLICAS+"receive-files", files=archivo_a_enviar, headers=headers)
+		sent = requests.delete(ADMIN_REPLICAS+"receive-files", data=payload, headers=headers)
 	
 	response_sent = json.loads(sent.text)
 	return response_sent['ok']
 
-def elimina_archivo():
-	pass
 
-
-class MyHandler(FileSystemEventHandler):
+class Observador(FileSystemEventHandler):
 	def on_any_event(self, event):
 		print("Got it! Evento: ", event.event_type)
 		self.process(event)
@@ -101,17 +133,18 @@ class MyHandler(FileSystemEventHandler):
 
 	def process(self, event):
 		filename, ext = os.path.splitext(event.src_path)
-		filename = f"{filename}_thumbnail{ext}"
+		filename = f"{filename}{ext}"
 		print("El archivo nuevo/cambiado/eliminado fue:", filename)
 
 
-event_handler = MyHandler()
+event_handler = Observador()
 observer = Observer()
 observer.schedule(event_handler, path='.', recursive=False)
 observer.start()
+
 try:
     while True:
-        time.sleep(30)
+        time.sleep(10)
 except KeyboardInterrupt:
     observer.stop()
 observer.join()
