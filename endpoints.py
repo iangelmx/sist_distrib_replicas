@@ -2,7 +2,6 @@
 import flask
 import json
 import sys
-import pdfkit
 import os
 import ssl
 
@@ -28,12 +27,14 @@ context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 #Donde se guardarán de forma predeterminada los archivos
 #Debe ser en rutas donde www-data tenga acceso
 UPLOAD_FOLDER = settings['destination']['folder']
+print("El upload folder es:", UPLOAD_FOLDER)
 SECRET_KEY = settings['secret_key']
 PREFIX_API_PATH = settings['prefix_api_path']
 
 # Setup the Flask-JWT-Extended extension
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+app.config['MAX_CONTENT_LENGTH'] = settings['max_file_size_to_receive_MB'] * 1024 * 1024
 app.config['SECRET_KEY'] = SECRET_KEY
 app.config['JWT_SECRET_KEY'] = get_secret_key() 
 jwt = JWTManager(app)
@@ -128,7 +129,7 @@ def protected():
 	# Access the identity of the current user with get_jwt_identity
 	current_user = get_jwt_identity()
 	claims = get_jwt_claims()
-	if claims['rol'] not in ['no-access']:
+	if claims['rol'] in ['no-access']:
 		return flask.abort(403)
 	print(claims)
 	return jsonify(logged_in_as=current_user), 200
@@ -175,8 +176,9 @@ def receive_files():
 	# DELETE -> Elimina un recurso del servidor
 	
 	if request.method in ['POST', 'PUT']:
-		archivo = request.files.get('nuevo_archivo')
-		if archivo and allowed_file(archivo.filename):
+		archivo = request.files.get('nuevo_archivo', None)
+		
+		if archivo is not None and allowed_file(archivo.filename):
 			filename = secure_filename(archivo.filename)
 			try:
 				archivo.save(os.path.join( UPLOAD_FOLDER , filename))
@@ -184,13 +186,24 @@ def receive_files():
 			except Exception as ex:
 				return jsonify(ok=False, description={"error":str(ex), "details":"Exception while saving file"})
 		else:
-			return jsonify(ok=False, description={"Missing file to upload"})
+			try:
+				filename = archivo.filename
+			except:
+				filename = None
+			error_dict={'ok':False, 'description':{'details':"Missing file to upload or extension not allowed", 'error':{'archivo':filename, 'allowed_file':allowed_file(str(filename))} } }
+			print(error_dict)
+			return jsonify(error_dict)
 	elif request.method == 'DELETE':
-		try:
-			os.remove(os.path.join( UPLOAD_FOLDER , filename))
-			return jsonify(ok=True, description="File removed")
-		except Exception as ex:
-				return jsonify(ok=False, description={"error":str(ex), "details":"Exception while deleting file"})
+		archivo = request.json.get('archivo', None)
+
+		if archivo is not None:
+			try:
+				os.remove(os.path.join( UPLOAD_FOLDER , archivo))
+				return jsonify(ok=True, description="File removed")
+			except Exception as ex:
+					return jsonify(ok=False, description={"error":str(ex), "details":"Exception while deleting file"})
+		else:
+			return jsonify(ok=False, description={'details':'Bad request', 'error':'File not found in request'})
 
 
 if __name__ == '__main__':

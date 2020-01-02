@@ -24,14 +24,17 @@ def get_access_token():
 	print("Se obtendrá un nuevo token")
 	data = {
 		'username_inno_tok':username_watcher,
-		'password_inno_tok':password_watcher
+		'password_inno_tok':password_watcher,
+		'platform_inno_tok':'replicas_sgma'
 	}
 
 	if access_token is None or access_token == "":
 		r = requests.post(ADMIN_REPLICAS+"/auth", json=data)
+		print(r.text)
 		while(r is None or r.status_code != 200):
 			r = requests.post(ADMIN_REPLICAS+"/auth", json=data)
-			time.sleep(1)
+			print(r.text)
+			time.sleep(5)
 		
 		response = json.loads( r.text )
 		# response['ok'] Si no existe o no se puede obtener, será None.
@@ -70,14 +73,19 @@ def envia_archivo(event):
 		'Authorization':'Bearer '+access_token
 	}
 
-	filename, ext = os.path.splitext(event.src_path)
-	filename = f"{filename}{ext}"
+	filename = os.path.basename(event.src_path)
 
 	#Abre y prepara el archivo para enviarlo
-	archivo_a_enviar = {'nuevo_archivo': open('./'+filename, 'rb')}
+	archivo_a_enviar = None
+	while archivo_a_enviar is None:
+		try:
+			archivo_a_enviar = {'nuevo_archivo': open( os.path.join(FOLDER_TO_WATCH, filename) , 'rb')}
+		except Exception as ex:
+			print("Excepción en envia archivo:", ex)
+			time.sleep(2)
 
 	#Intenta enviar el archivo con el token que se tiene actualmente.
-	sent = requests.post(ADMIN_REPLICAS+"receive-files", files=archivo_a_enviar, headers=headers)
+	sent = requests.post(ADMIN_REPLICAS+"/receive-files", files=archivo_a_enviar, headers=headers)
 	response = json.loads(sent.text)
 	while sent is None or sent.status_code == 422 or response.get('msg', None) == "Token has expired":
 		access_token, refresh_token = refresh_access_token()
@@ -85,7 +93,7 @@ def envia_archivo(event):
 			'Authorization':'Bearer '+access_token
 		}
 		
-		sent = requests.post(ADMIN_REPLICAS+"receive-files", files=archivo_a_enviar, headers=headers)
+		sent = requests.post(ADMIN_REPLICAS+"/receive-files", files=archivo_a_enviar, headers=headers)
 		time.sleep(1)
 	
 	response_sent = json.loads(sent.text)
@@ -101,8 +109,7 @@ def elimina_archivo(event):
 		'Authorization':'Bearer '+token
 	}
 
-	filename, ext = os.path.splitext(event.src_path)
-	filename = f"{filename}{ext}"
+	filename = os.path.basename(event.src_path)
 
 	archivo_a_eliminar = filename
 	
@@ -110,7 +117,7 @@ def elimina_archivo(event):
 		'archivo':archivo_a_eliminar
 	}
 
-	sent = requests.delete(ADMIN_REPLICAS+"receive-files", data=payload, headers=headers)
+	sent = requests.delete(ADMIN_REPLICAS+"/receive-files", json=payload, headers=headers)
 	response = json.loads(sent.text)
 	while sent is None or sent.status_code == 422 or response.get('msg', None) == "Token has expired":
 		access_token, refresh_token = refresh_access_token()
@@ -120,9 +127,10 @@ def elimina_archivo(event):
 			'Authorization':'Bearer '+token
 		}
 		
-		sent = requests.delete(ADMIN_REPLICAS+"receive-files", data=payload, headers=headers)
+		sent = requests.delete(ADMIN_REPLICAS+"/receive-files", data=payload, headers=headers)
 	
 	response_sent = json.loads(sent.text)
+	print(sent.text)
 	return response_sent['ok']
 
 
@@ -131,9 +139,9 @@ class Observador(FileSystemEventHandler):
 		print("Got it! Evento: ", event.event_type)
 		self.process(event)
 		if event.event_type in ['modified','created']:
-			envia_archivo(event)
+			print("Archivo enviado:", envia_archivo(event))
 		elif event.event_type == 'deleted':
-			elimina_archivo(event)
+			print("Archivo eliminado:", elimina_archivo(event))
 
 	def process(self, event):
 		filename, ext = os.path.splitext(event.src_path)
@@ -146,9 +154,16 @@ observer = Observer()
 observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=False)
 observer.start()
 
-try:
-    while True:
-        time.sleep(10)
-except KeyboardInterrupt:
-    observer.stop()
-observer.join()
+while True:
+	try:
+		while True:
+			time.sleep(10)
+			print("Esperará 10 segs")
+	except Exception as ex:
+		observer.stop()
+		event_handler = Observador()
+		observer = Observer()
+		observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=False)
+		observer.start()
+		print("Reinició el observador...")
+	observer.join()
