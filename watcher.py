@@ -73,6 +73,10 @@ def envia_archivo(event):
 		'Authorization':'Bearer '+access_token
 	}
 
+	filename, ext= os.path.splitext(event.src_path)
+	ruta_relativa = filename.split(FOLDER_TO_WATCH)[1]
+	print("Ruta relativa al archivo:", f"{ruta_relativa}{ext}")
+
 	filename = os.path.basename(event.src_path)
 
 	#Abre y prepara el archivo para enviarlo
@@ -151,7 +155,7 @@ class Observador(FileSystemEventHandler):
 
 event_handler = Observador()
 observer = Observer()
-observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=False)
+observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=True)
 observer.start()
 
 while True:
