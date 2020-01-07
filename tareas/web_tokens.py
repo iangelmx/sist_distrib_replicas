@@ -4,7 +4,7 @@ from libs.sqlBd import Bd
 from libs.hashing import Hasher
 
 alfabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz01234567890@#$_.*?=&%:<>+-[]"
-settings = json.loads( open("settings.json", "r").read() )
+settings = json.loads( open("settings_endpoints.json", "r").read() )
 
 def connectDB():
 	db_data= settings['databases']['tokens']

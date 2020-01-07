@@ -8,6 +8,7 @@ __pycache__/
 
 #Ignore settings of application
 settings.json
+**.json
 
 #Ignore Visual Studio code folder
 .vscode

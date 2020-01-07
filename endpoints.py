@@ -15,10 +15,10 @@ from flask import render_template_string, make_response, send_from_directory, re
 from flask_cors import CORS, cross_origin
 
 from tareas.web_tokens import get_secret_key, valida_credenciales_token
-from tareas.save_files import allowed_file
+from tareas.save_files import *
 
 #Carga ajustes de entorno
-settings = json.loads( open("./settings.json", "r").read() )
+settings = json.loads( open("./settings_endpoints.json", "r").read() )
 
 #Setea certificados de seguridad SSL
 context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
@@ -26,10 +26,12 @@ context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
 
 #Donde se guardarán de forma predeterminada los archivos
 #Debe ser en rutas donde www-data tenga acceso
-UPLOAD_FOLDER = settings['destination']['folder']
+UPLOAD_FOLDER = settings['default_upload_folder']
 print("El upload folder es:", UPLOAD_FOLDER)
 SECRET_KEY = settings['secret_key']
 PREFIX_API_PATH = settings['prefix_api_path']
+
+ALLOWED_DIRECTORIES = settings['allowed_directories']
 
 # Setup the Flask-JWT-Extended extension
 app = Flask(__name__)
@@ -169,6 +171,15 @@ def receive_files():
 	if claims['rol'] in claims_no_permitidos:
 		#Interrumpe la petición y regresa un error 403
 		return flask.abort(403)
+	
+	destination_platf = request.form.get('destination', None)
+	destination_os = request.form.get('os', None)
+	relative_path = request.form.get('relative_path', None)
+	
+	if destination_platf is None:
+		return jsonify(ok=False, description={ 'details':"Missing upload application os", 'error':"Application value (Dest, Os): {}".format(request.json) }), 400
+	
+	destination_dir = ALLOWED_DIRECTORIES.get( destination_platf, {} ).get( destination_os, "-" )+relative_path
 
 	#Se hizo la distinción de los métodos:
 	# POST	 -> Crea un recurso en el server
@@ -181,29 +192,29 @@ def receive_files():
 		if archivo is not None and allowed_file(archivo.filename):
 			filename = secure_filename(archivo.filename)
 			try:
-				archivo.save(os.path.join( UPLOAD_FOLDER , filename))
+				archivo.save(os.path.join( destination_dir , filename))
 				return jsonify(ok=True, description="File saved")
 			except Exception as ex:
-				return jsonify(ok=False, description={"error":str(ex), "details":"Exception while saving file"})
+				return jsonify(ok=False, description={"error":str(ex), "details":"Exception while saving file"}), 500
 		else:
 			try:
 				filename = archivo.filename
 			except:
 				filename = None
 			error_dict={'ok':False, 'description':{'details':"Missing file to upload or extension not allowed", 'error':{'archivo':filename, 'allowed_file':allowed_file(str(filename))} } }
-			print(error_dict)
-			return jsonify(error_dict)
+			
+			return jsonify(error_dict), 400
 	elif request.method == 'DELETE':
 		archivo = request.json.get('archivo', None)
 
 		if archivo is not None:
 			try:
-				os.remove(os.path.join( UPLOAD_FOLDER , archivo))
+				os.remove(os.path.join( destination_dir , archivo))
 				return jsonify(ok=True, description="File removed")
 			except Exception as ex:
-					return jsonify(ok=False, description={"error":str(ex), "details":"Exception while deleting file"})
+					return jsonify(ok=False, description={"error":str(ex), "details":"Exception while deleting file"}), 500
 		else:
-			return jsonify(ok=False, description={'details':'Bad request', 'error':'File not found in request'})
+			return jsonify(ok=False, description={'details':'Bad request', 'error':'File not found in request'}), 400
 
 
 if __name__ == '__main__':
