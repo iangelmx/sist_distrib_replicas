@@ -56,9 +56,18 @@ def refresh_access_token():
 		'Authorization':'Bearer '+refresh_token
 	}
 	r = requests.post(ADMIN_REPLICAS+"/refresh", headers=headersRefresh)
+	MAX_INTENTOS = 10
+	intentos = 0
 	while r.status_code != 200:
 		r = requests.post(ADMIN_REPLICAS+"/refresh", headers=headersRefresh)
 		time.sleep(1)
+		intentos+=1
+		if intentos >= MAX_INTENTOS:
+			print("Tratará de sacar TOKENS nuevos")
+			access_token = None
+			refresh_token = None
+			access_token, refresh_access_token = get_access_token()
+			return ( access_token, refresh_access_token )
 	
 	response = json.loads( r.text )
 	if response.get('ok', None) == True:
@@ -98,7 +107,7 @@ def envia_archivo(event):
 			time.sleep(2)
 
 	payload = {
-		'destination_platf' : PLATFORM_TO_WATCH,
+		'destination_path' : PLATFORM_TO_WATCH,
 		'os' : OS_DESTINATION,
 		'relative_path' : ruta_relativa
 	}
@@ -129,15 +138,20 @@ def elimina_archivo(event):
 		'Authorization':'Bearer '+token
 	}
 
-	filename = os.path.basename(event.src_path)
+	filename, ext= os.path.splitext(event.src_path)
+	ruta_relativa = filename.split(FOLDER_TO_WATCH)[1]
 
-	archivo_a_eliminar = filename
+	archivo_a_eliminar = os.path.basename(event.src_path)
+	ruta_relativa = f"{ruta_relativa}{ext}".replace(archivo_a_eliminar,"")
 	
 	payload = {
-		'archivo':archivo_a_eliminar
+		'archivo':archivo_a_eliminar,
+		'destination_path' : PLATFORM_TO_WATCH,
+		'os' : OS_DESTINATION,
+		'relative_path' : ruta_relativa
 	}
 
-	sent = requests.delete(ADMIN_REPLICAS+"/receive-files", json=payload, headers=headers)
+	sent = requests.delete(ADMIN_REPLICAS+"/receive-files", data=payload, headers=headers)
 	response = json.loads(sent.text)
 	while sent is None or sent.status_code == 422 or response.get('msg', None) == "Token has expired":
 		access_token, refresh_token = refresh_access_token()

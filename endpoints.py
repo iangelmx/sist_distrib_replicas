@@ -4,6 +4,8 @@ import json
 import sys
 import os
 import ssl
+import datetime
+import threading
 
 from werkzeug.utils import secure_filename
 from flask_jwt_extended import (
@@ -13,9 +15,26 @@ from flask_jwt_extended import (
 from flask import Flask, jsonify, send_file, request, render_template
 from flask import render_template_string, make_response, send_from_directory, redirect
 from flask_cors import CORS, cross_origin
+from logging.config import dictConfig
 
 from tareas.web_tokens import get_secret_key, valida_credenciales_token
 from tareas.save_files import *
+
+dictConfig({
+    'version': 1,
+    'formatters': {'default': {
+        'format': '[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    }},
+    'handlers': {'wsgi': {
+        'class': 'logging.StreamHandler',
+        'stream': 'ext://flask.logging.wsgi_errors_stream',
+        'formatter': 'default'
+    }},
+    'root': {
+        'level': 'INFO',
+        'handlers': ['wsgi']
+    }
+})
 
 #Carga ajustes de entorno
 settings = json.loads( open("./settings_endpoints.json", "r").read() )
@@ -41,6 +60,7 @@ app.config['SECRET_KEY'] = SECRET_KEY
 app.config['JWT_SECRET_KEY'] = get_secret_key() 
 jwt = JWTManager(app)
 CORS(app)
+
 
 ''' -------------------------------------------------------------------------------------- '''
 ''' ------------------------------------ NO TOCAR:  ------------------------------------'''
@@ -79,7 +99,9 @@ def validaOrigen(request, sitiosPermitidos):
 def login_with_tokens():
 	peticion = request
 	if not peticion.is_json:
-		return jsonify({"ok":False,"msg": "Missing JSON in request"}), 400
+		error_dict = {"ok":False,"msg": "Missing JSON in request"}
+		to_log( request, 400, "Missing JSON in request" )
+		return jsonify(error_dict), 400
 	
 	json_req = peticion.json
 
@@ -88,15 +110,19 @@ def login_with_tokens():
 	platform = json_req.get('platform_inno_tok', None)
 	
 	if not username:
+		to_log( request, 400, "Missing or bad username parameter" )
 		return jsonify({"ok":False,"msg": "Missing or bad username parameter"}), 400
 	if not password:
+		to_log( request, 400, "Missing or bad password parameter" )
 		return jsonify({"ok":False,"msg": "Missing or bad password parameter"}), 400
 	if not platform:
+		to_log( request, 400, "Missing or bad platform parameter" )
 		return jsonify({"ok":False,"msg": "Missing or bad platform parameter"}), 400
 
 	result = valida_credenciales_token(username, password, platform)
 	
 	if result['ok'] != True:
+		to_log( request, 401, "Bad credentials for specified platform (username or password)" )
 		return jsonify({"ok":False,"msg": "Bad credentials for specified platform (username or password)"}), 401
 
 	# Identity can be any data that is json serializable
@@ -170,16 +196,27 @@ def receive_files():
 	#Se valida si el claim de la petición no está en la lista de los que se excluirán
 	if claims['rol'] in claims_no_permitidos:
 		#Interrumpe la petición y regresa un error 403
+		to_log( request, 403, "claim no permitido:"+str( claims['rol'] ) )
 		return flask.abort(403)
 	
-	destination_platf = request.form.get('destination', None)
+	destination_platf = request.form.get('destination_path', None)
 	destination_os = request.form.get('os', None)
 	relative_path = request.form.get('relative_path', None)
 	
-	if destination_platf is None:
-		return jsonify(ok=False, description={ 'details':"Missing upload application os", 'error':"Application value (Dest, Os): {}".format(request.json) }), 400
+	if destination_platf is None or destination_os is None or relative_path is None:
+		desc ={ 'details':"Missing upload application details", 'error':"Destination values (DestP, Os, rel path): {}".format(request.json) }
+		app.logger.info('%s ERROR', desc)
+		to_log(request,400, desc)
+		return jsonify(ok=False, description=desc), 400
 	
-	destination_dir = ALLOWED_DIRECTORIES.get( destination_platf, {} ).get( destination_os, "-" )+relative_path
+	#Se obtiene la raíz del directorio en donde se harán las réplicas.
+	root_directory = ALLOWED_DIRECTORIES.get( destination_platf, '' ).get( destination_os, "" )
+	# Si no se puede obtener, la guarda en la ruta predeterminada de Flask. Esta ruta está indicada en el
+	# archivo settings_endpoints.json -> 'default_upload_folder'
+	if root_directory == "" : root_directory = UPLOAD_FOLDER
+
+	#Se concatena la ruta relativa a partir de la raíz.
+	destination_dir= os.path.join( root_directory, relative_path )
 
 	#Se hizo la distinción de los métodos:
 	# POST	 -> Crea un recurso en el server
@@ -189,33 +226,69 @@ def receive_files():
 	if request.method in ['POST', 'PUT']:
 		archivo = request.files.get('nuevo_archivo', None)
 		
+		#Validamos que la extensión del archivo esté tolerada por la API
 		if archivo is not None and allowed_file(archivo.filename):
 			filename = secure_filename(archivo.filename)
 			try:
 				archivo.save(os.path.join( destination_dir , filename))
+				to_log(request, 200, f"{os.path.join( destination_dir , filename)} File saved", "success")
 				return jsonify(ok=True, description="File saved")
 			except Exception as ex:
-				return jsonify(ok=False, description={"error":str(ex), "details":"Exception while saving file"}), 500
+				#Si se llega a una excepción, probablemente es porque no existían los directorios en donde se está
+				#queriendo guardar el archivo. Este bloque trata de construir el árbol de directorios
+				try:
+					#Se obtiene en una lista los directorios que se tienen que construir a partir del raíz
+					rutas_relativas = relative_path.split("\\")
+					#Se mueve la consola del sistema al directorio raíz de subida
+					os.chdir("{}".format( root_directory ))
+
+					for directorio in rutas_relativas:
+						if directorio in ["", " "]:
+							continue
+						#print("Contruyendo directorio:", directorio)
+						result = os.system(f"mkdir {directorio}") #Si result == 1 -> Ya exitía el directorio
+						os.chdir(f"{directorio}") #Entramos en el directorio que acabamos de crear
+					#Tratamos finalmente de guardar el archivo
+					archivo.save(os.path.join( destination_dir , filename))
+
+
+					#Si todo sale bien, se regresaría un resultado de éxito, sino, imprime la excepción
+					#en consola y regresa el json con la excepción inicial
+					return jsonify(ok=True, description="File saved") 
+				except Exception as ix:
+					print("Eso no lo arregló... :v ->", ix)
+
+				error_dict = {"error":str(ex), "details":"Exception while saving file"}
+				to_log(request, 500, desc)
+				return jsonify(ok=False, description=error_dict), 500
 		else:
+			#La API no tolera ese tipo de archivos y regresa el error
 			try:
 				filename = archivo.filename
 			except:
 				filename = None
 			error_dict={'ok':False, 'description':{'details':"Missing file to upload or extension not allowed", 'error':{'archivo':filename, 'allowed_file':allowed_file(str(filename))} } }
-			
+			app.logger.info('%s Error al subir archivo', error_dict)
+			to_log(request, 400, error_dict)
 			return jsonify(error_dict), 400
 	elif request.method == 'DELETE':
-		archivo = request.json.get('archivo', None)
+		archivo = request.form.get('archivo', None)
 
 		if archivo is not None:
 			try:
 				os.remove(os.path.join( destination_dir , archivo))
 				return jsonify(ok=True, description="File removed")
 			except Exception as ex:
-					return jsonify(ok=False, description={"error":str(ex), "details":"Exception while deleting file"}), 500
+				error_dict = {"error":str(ex), "details":"Exception while deleting file"}
+				to_log(request, 500, error_dict)
+				return jsonify(ok=False, description=error_dict), 500
 		else:
-			return jsonify(ok=False, description={'details':'Bad request', 'error':'File not found in request'}), 400
+			error_dict = {'details':'Bad request', 'error':'File not found in request'}
+			to_log(request, 400, error_dict)
+			return jsonify(ok=False, description=error_dict), 400
 
 
 if __name__ == '__main__':
+	import logging
+	logging.basicConfig(filename="./logs/general.log", level=logging.DEBUG)
 	app.run(debug=True, use_reloader=False, port=90)
