@@ -5,6 +5,7 @@ from watchdog.events import *
 import os
 import requests
 import json
+import datetime
 
 
 settings = json.loads( open("./settings_watcher.json", "r").read() )
@@ -173,31 +174,67 @@ class Observador(PatternMatchingEventHandler):
 	 super().__init__(patterns=patterns, ignore_patterns=ignore_patterns, ignore_directories=ignore_directories, case_sensitive=case_sensitive)
 
 	def on_any_event(self, event):
+		ahora=datetime.datetime.now()
+		
+		log_watcher = open("./logs/watcher_{}.log".format(ahora.strftime("%Y.%m.%d")), "a+")
 		print("Got it! Evento: ", event.event_type)
 		self.process(event)
-		
+		filename, ext= os.path.splitext(event.src_path)
+		archivo = f"{filename}{ext}".replace(FOLDER_TO_WATCH, "")
 		if event.event_type in ['modified','created']:
-			print("Archivo enviado:", envia_archivo(event))
+			try:
+				resultado_envio = envia_archivo(event)
+				print("Archivo enviado:", resultado_envio)
+				cadena = "{} | {} | {} | {} |\n".format( ahora.strftime("%Y-%m-%d %H:%M:%S") , event.event_type, archivo, resultado_envio)
+			except Exception as ex:
+				print("Error al enviar el archivo:", ex)
+				cadena = "{} | {} | {} | {} |\n".format( ahora.strftime("%Y-%m-%d %H:%M:%S") , event.event_type, archivo, "ERROR:"+str(ex))
+				
 		elif event.event_type == 'deleted':
-			print("Archivo eliminado:", elimina_archivo(event))
+			try:
+				resultado_eliminacion = elimina_archivo(event)
+				print("Archivo eliminado:", resultado_eliminacion)
+				cadena = "{} | {} | {} | {} |\n".format( ahora.strftime("%Y-%m-%d %H:%M:%S") , event.event_type, archivo, resultado_eliminacion)
+			except Exception as ex:
+				print("Error al solicitar eliminación del archivo:", ex)
+				cadena = "{} | {} | {} | {} |\n".format( ahora.strftime("%Y-%m-%d %H:%M:%S") , event.event_type, archivo, "ERROR:"+str(ex))
+		
+		log_watcher.write(cadena)
+		log_watcher.close()
 
 	def process(self, event):
 		filename, ext = os.path.splitext(event.src_path)
 		filename = f"{filename}{ext}"
 		print("El archivo nuevo/cambiado/eliminado fue:", filename)
 
+flag = False
 
-event_handler = Observador(ignore_directories=True)
-observer = Observer()
-observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=True)
-observer.start()
+def startObserver():
+	event_handler = Observador(ignore_directories=True)
+	observer = Observer()
+	observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=True)
+	observer.start()
+	return observer
+
+try:
+	event_handler = Observador(ignore_directories=True)
+	observer = Observer()
+	observer.schedule(event_handler, path=FOLDER_TO_WATCH, recursive=True)
+	observer.start()
+	flag = True
+except Exception as ex:
+	print("Excepción en hilo de observer:", ex)
+	flag =False
 
 while True:
 	try:
-		while True:
-			time.sleep(10)
-			print("Esperará 10 segs")
+		while flag==False:
+			print("Iniciando observador")
+			observer.join()
+			observer = startObserver()
+			flag=True
 	except Exception as ex:
+		flag = False
 		observer.stop()
 		event_handler = Observador()
 		observer = Observer()
