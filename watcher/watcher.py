@@ -34,12 +34,12 @@ def get_access_token():
 	}
 
 	if access_token is None or access_token == "":
-		r = requests.post(ADMIN_REPLICAS+"/auth", json=data)
+		r = requests.post(ADMIN_REPLICAS+"/auth", json=data, verify=False)
 		print(r.text)
 		while(r is None or r.status_code != 200):
-			r = requests.post(ADMIN_REPLICAS+"/auth", json=data)
+			r = requests.post(ADMIN_REPLICAS+"/auth", json=data, verify=False)
 			print(r.text)
-			time.sleep(5)
+			time.sleep(2)
 		
 		response = json.loads( r.text )
 		# response['ok'] Si no existe o no se puede obtener, será None.
@@ -47,8 +47,6 @@ def get_access_token():
 			token = response['access_token']
 			access_token = token
 			refresh_token = response['refresh_token']
-		else:
-			return get_access_token()
 		
 	return ( access_token, refresh_token )
 
@@ -58,11 +56,11 @@ def refresh_access_token():
 	headersRefresh = {
 		'Authorization':'Bearer '+refresh_token
 	}
-	r = requests.post(ADMIN_REPLICAS+"/refresh", headers=headersRefresh)
+	r = requests.post(ADMIN_REPLICAS+"/refresh", headers=headersRefresh, verify=False)
 	MAX_INTENTOS = 10
 	intentos = 0
 	while r.status_code != 200:
-		r = requests.post(ADMIN_REPLICAS+"/refresh", headers=headersRefresh)
+		r = requests.post(ADMIN_REPLICAS+"/refresh", headers=headersRefresh, verify=False)
 		time.sleep(1)
 		intentos+=1
 		if intentos >= MAX_INTENTOS:
@@ -76,10 +74,11 @@ def refresh_access_token():
 	if response.get('ok', None) == True:
 		token = response['access_token']
 		refresh_token = response['refresh_token']
+		return ( token, refresh_token )
 	else:
-		return get_access_token()
-	
-	return ( token, refresh_token )
+		print("No se obtuvo una respuesta positiva:\n", r.text)
+		access_token, refresh_access_token = get_access_token()
+		return ( access_token, refresh_access_token )
 	
 
 def envia_archivo(event):
@@ -118,7 +117,7 @@ def envia_archivo(event):
 	}
 
 	#Intenta enviar el archivo con el token que se tiene actualmente.
-	sent = requests.post(ADMIN_REPLICAS+"/receive-files", files=archivo_a_enviar, headers=headers, data=payload)
+	sent = requests.post(ADMIN_REPLICAS+"/receive-files", files=archivo_a_enviar, headers=headers, data=payload, verify=False)
 	print(sent.text)
 	response = json.loads(sent.text)
 	while sent is None or sent.status_code == 422 or response.get('msg', None) == "Token has expired":
@@ -127,7 +126,7 @@ def envia_archivo(event):
 			'Authorization':'Bearer '+access_token
 		}
 		
-		sent = requests.post(ADMIN_REPLICAS+"/receive-files", files=archivo_a_enviar, headers=headers, data=payload)
+		sent = requests.post(ADMIN_REPLICAS+"/receive-files", files=archivo_a_enviar, headers=headers, data=payload, verify=False)
 		time.sleep(1)
 	print(sent.text)
 	response_sent = json.loads(sent.text)
@@ -156,7 +155,7 @@ def elimina_archivo(event):
 		'relative_path' : ruta_relativa
 	}
 
-	sent = requests.delete(ADMIN_REPLICAS+"/receive-files", data=payload, headers=headers)
+	sent = requests.delete(ADMIN_REPLICAS+"/receive-files", data=payload, headers=headers, verify=False)
 	response = json.loads(sent.text)
 	while sent is None or sent.status_code == 422 or response.get('msg', None) == "Token has expired":
 		access_token, refresh_token = refresh_access_token()
@@ -166,7 +165,7 @@ def elimina_archivo(event):
 			'Authorization':'Bearer '+token
 		}
 		
-		sent = requests.delete(ADMIN_REPLICAS+"/receive-files", data=payload, headers=headers)
+		sent = requests.delete(ADMIN_REPLICAS+"/receive-files", data=payload, headers=headers, verify=False)
 	
 	response_sent = json.loads(sent.text)
 	print(sent.text)

@@ -1,7 +1,7 @@
 import datetime
 import threading
 
-ALLOWED_EXTENSIONS = {'txt', 'json', 'jpg', 'jpeg', 'png', 'tiff', 'gif'}
+ALLOWED_EXTENSIONS = {'txt', 'json', 'jpg', 'jpeg', 'png', 'tiff', 'gif', ''}
 
 def to_log(request, error_num, leyenda):
 	hilo = threading.Thread(target=write_in_log, name="Escribe en log manual", args=(request, error_num, leyenda))
@@ -21,6 +21,7 @@ def allowed_file(filename):
 	else:
 		if '' in ALLOWED_EXTENSIONS:
 			return True
+		return False
 		
 
 
