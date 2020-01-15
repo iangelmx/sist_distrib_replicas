@@ -100,7 +100,7 @@ def login_with_tokens():
 	peticion = request
 	if not peticion.is_json:
 		error_dict = {"ok":False,"msg": "Missing JSON in request"}
-		to_log( request, 400, "Missing JSON in request" )
+		#Se elimina el log manual, por error de entorno.  #to_log(( request, 400, "Missing JSON in request" )
 		return jsonify(error_dict), 400
 	
 	json_req = peticion.json
@@ -110,19 +110,19 @@ def login_with_tokens():
 	platform = json_req.get('platform_inno_tok', None)
 	
 	if not username:
-		to_log( request, 400, "Missing or bad username parameter" )
+		#Se elimina el log manual, por error de entorno.  #to_log(( request, 400, "Missing or bad username parameter" )
 		return jsonify({"ok":False,"msg": "Missing or bad username parameter"}), 400
 	if not password:
-		to_log( request, 400, "Missing or bad password parameter" )
+		#Se elimina el log manual, por error de entorno.  #to_log(( request, 400, "Missing or bad password parameter" )
 		return jsonify({"ok":False,"msg": "Missing or bad password parameter"}), 400
 	if not platform:
-		to_log( request, 400, "Missing or bad platform parameter" )
+		#Se elimina el log manual, por error de entorno.  #to_log(( request, 400, "Missing or bad platform parameter" )
 		return jsonify({"ok":False,"msg": "Missing or bad platform parameter"}), 400
 
 	result = valida_credenciales_token(username, password, platform)
 	
 	if result['ok'] != True:
-		to_log( request, 401, "Bad credentials for specified platform (username or password)" )
+		#Se elimina el log manual, por error de entorno.  #to_log(( request, 401, "Bad credentials for specified platform (username or password)" )
 		return jsonify({"ok":False,"msg": "Bad credentials for specified platform (username or password)"}), 401
 
 	# Identity can be any data that is json serializable
@@ -196,7 +196,7 @@ def receive_files():
 	#Se valida si el claim de la petición no está en la lista de los que se excluirán
 	if claims['rol'] in claims_no_permitidos:
 		#Interrumpe la petición y regresa un error 403
-		to_log( request, 403, "claim no permitido:"+str( claims['rol'] ) )
+		#Se elimina el log manual, por error de entorno.  #to_log(( request, 403, "claim no permitido:"+str( claims['rol'] ) )
 		return flask.abort(403)
 	
 	destination_platf = request.form.get('destination_path', None)
@@ -206,7 +206,7 @@ def receive_files():
 	if destination_platf is None or destination_os is None or relative_path is None:
 		desc ={ 'details':"Missing upload application details", 'error':"Destination values (DestP, Os, rel path): {}".format(request.json) }
 		app.logger.info('%s ERROR', desc)
-		to_log(request,400, desc)
+		#Se elimina el log manual, por error de entorno.  #to_log((request,400, desc)
 		return jsonify(ok=False, description=desc), 400
 	
 	#Se obtiene la raíz del directorio en donde se harán las réplicas.
@@ -240,7 +240,7 @@ def receive_files():
 			filename = secure_filename(archivo.filename)
 			try:
 				archivo.save(os.path.join( destination_dir , filename))
-				to_log(request, 200, f"{os.path.join( destination_dir , filename)} File saved", "success")
+				#Se elimina el log manual, por error de entorno.  #to_log((request, 200, f"{os.path.join( destination_dir , filename)} File saved", "success")
 				return jsonify(ok=True, description="File saved")
 			except Exception as ex:
 				#Si se llega a una excepción, probablemente es porque no existían los directorios en donde se está
@@ -263,7 +263,7 @@ def receive_files():
 					print("Eso no lo arregló... :v ->", ix)
 
 				error_dict = {"error":str(ex), "details":"Exception while saving file"}
-				to_log(request, 500, error_dict)
+				#Se elimina el log manual, por error de entorno.  #to_log((request, 500, error_dict)
 				return jsonify(ok=False, description=error_dict), 500
 		else:
 			#La API no tolera ese tipo de archivos y regresa el error
@@ -273,7 +273,7 @@ def receive_files():
 				filename = None
 			error_dict={'ok':False, 'description':{'details':"Missing file to upload or extension not allowed", 'error':{'archivo':filename, 'allowed_file':allowed_file(str(filename))} } }
 			app.logger.info('%s Error al subir archivo', error_dict)
-			to_log(request, 400, error_dict)
+			#Se elimina el log manual, por error de entorno.  #to_log((request, 400, error_dict)
 			return jsonify(error_dict), 400
 	elif request.method == 'DELETE':
 		archivo = request.form.get('archivo', None)
@@ -284,11 +284,11 @@ def receive_files():
 				return jsonify(ok=True, description="File removed")
 			except Exception as ex:
 				error_dict = {"error":str(ex), "details":"Exception while deleting file"}
-				to_log(request, 500, error_dict)
+				#Se elimina el log manual, por error de entorno.  #to_log((request, 500, error_dict)
 				return jsonify(ok=False, description=error_dict), 500
 		else:
 			error_dict = {'details':'Bad request', 'error':'File not found in request'}
-			to_log(request, 400, error_dict)
+			#Se elimina el log manual, por error de entorno.  #to_log((request, 400, error_dict)
 			return jsonify(ok=False, description=error_dict), 400
 
 
