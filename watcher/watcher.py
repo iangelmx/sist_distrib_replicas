@@ -47,6 +47,8 @@ def get_access_token():
 			token = response['access_token']
 			access_token = token
 			refresh_token = response['refresh_token']
+		else:
+			return get_access_token()
 		
 	return ( access_token, refresh_token )
 
@@ -74,6 +76,8 @@ def refresh_access_token():
 	if response.get('ok', None) == True:
 		token = response['access_token']
 		refresh_token = response['refresh_token']
+	else:
+		return get_access_token()
 	
 	return ( token, refresh_token )
 	

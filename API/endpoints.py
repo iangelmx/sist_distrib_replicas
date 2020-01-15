@@ -215,8 +215,17 @@ def receive_files():
 	# archivo settings_endpoints.json -> 'default_upload_folder'
 	if root_directory == "" : root_directory = UPLOAD_FOLDER
 
-	#Se concatena la ruta relativa a partir de la raíz.
-	destination_dir= os.path.join( root_directory, relative_path )
+	#Se obtiene en una lista los directorios que se tienen que construir a partir del raíz
+	rutas_relativas = relative_path.split("\\")
+
+	#Se va concatenando la ruta relativa a partir de la raíz.
+	destination_dir = root_directory
+	
+	for directorio in rutas_relativas:
+		if directorio in [' ', '']:
+			continue
+		#print("Appending dir:", directorio, "rutas_acum:", rutas_acum)
+		destination_dir = os.path.join( destination_dir, directorio )
 
 	#Se hizo la distinción de los métodos:
 	# POST	 -> Crea un recurso en el server
@@ -237,20 +246,15 @@ def receive_files():
 				#Si se llega a una excepción, probablemente es porque no existían los directorios en donde se está
 				#queriendo guardar el archivo. Este bloque trata de construir el árbol de directorios
 				try:
-					#Se obtiene en una lista los directorios que se tienen que construir a partir del raíz
-					rutas_relativas = relative_path.split("\\")
-					#Se mueve la consola del sistema al directorio raíz de subida
-					os.chdir("{}".format( root_directory ))
 
-					for directorio in rutas_relativas:
-						if directorio in ["", " "]:
-							continue
-						#print("Contruyendo directorio:", directorio)
-						result = os.system(f"mkdir {directorio}") #Si result == 1 -> Ya exitía el directorio
-						os.chdir(f"{directorio}") #Entramos en el directorio que acabamos de crear
-					#Tratamos finalmente de guardar el archivo
+					#print("Se hará el directorio:", rutas_acum)
+					try:
+						os.makedirs(destination_dir)
+						#print("Hizo los directorios satisfactoriamente")
+					except Exception as ex:
+						print("No pudo crear los directorios:", ex)
+					
 					archivo.save(os.path.join( destination_dir , filename))
-
 
 					#Si todo sale bien, se regresaría un resultado de éxito, sino, imprime la excepción
 					#en consola y regresa el json con la excepción inicial
@@ -259,7 +263,7 @@ def receive_files():
 					print("Eso no lo arregló... :v ->", ix)
 
 				error_dict = {"error":str(ex), "details":"Exception while saving file"}
-				to_log(request, 500, desc)
+				to_log(request, 500, error_dict)
 				return jsonify(ok=False, description=error_dict), 500
 		else:
 			#La API no tolera ese tipo de archivos y regresa el error
